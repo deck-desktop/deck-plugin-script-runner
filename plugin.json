@@ -1,0 +1,8 @@
+{
+  "id": "script-runner",
+  "name": "Script Runner",
+  "description": "Runs scripts on a schedule, here or on the VPS.",
+  "icon": "Terminal",
+  "version": "1.0.0",
+  "minDeck": "0.8.0"
+}

@@ -1,0 +1,13 @@
+[Unit]
+Description=Run Deck's server-side script scheduler every minute
+
+[Timer]
+# Every minute, on the minute. A job's schedule is specified to the minute in Deck, so this is
+# the coarsest tick that can still fire one on time.
+OnCalendar=*:0/1
+# A missed run is not made up. Each tick asks "what is due right now" — replaying the ticks
+# missed while the machine was off would fire a batch of jobs at once for times that have passed.
+Persistent=false
+
+[Install]
+WantedBy=timers.target

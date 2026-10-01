@@ -1,0 +1,6 @@
+[Unit]
+Description=Deck server-side script scheduler (fires vps-targeted Deck jobs)
+
+[Service]
+Type=oneshot
+ExecStart=/opt/deck-brain-config/deck-vps-scheduler.sh
