@@ -99,9 +99,12 @@ export default function ScriptRunner() {
     load();
     loadRuns();
     let un: (() => void) | undefined;
-    // Rust emits this after the scheduler stamps `lastRun` on a job it fired, so reloading here
+    // The scheduler stamping `lastRun` on a job it fired rewrites script-runner, so reloading here
     // is what keeps this list from saving a stale copy back over it.
-    listen("config-changed", () => { load(); loadRuns(); }).then((u) => (un = u));
+    listen<string[]>("config-changed", (e) => {
+      if (e.payload.includes("script-runner")) load();
+      if (e.payload.includes("run-log") || e.payload.includes("run-log-vps")) loadRuns();
+    }).then((u) => (un = u));
     // VPS run records arrive via Syncthing (no local FS event) — poll so they surface.
     const iv = setInterval(loadRuns, 15_000);
     return () => { un?.(); clearInterval(iv); };
