@@ -48,7 +48,7 @@ export interface RunRecord {
  * Merge the local and VPS run logs into one newest-first list.
  *
  * Two separate files rather than one because the VPS cannot write this machine's log: its
- * records arrive over Syncthing as `run-log-vps`. Merging on read is what makes the history
+ * records are fetched over SSH into `run-log-vps`. Merging on read is what makes the history
  * look like a single timeline.
  */
 export function mergeRuns(local: RunRecord[], vps: RunRecord[]): RunRecord[] {

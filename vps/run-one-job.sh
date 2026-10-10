@@ -7,8 +7,8 @@ export PATH="/usr/local/sbin:/usr/local/bin:/usr/bin:/bin"
 export TZ="Asia/Beirut"
 id="$1"; name="$2"; command="$3"
 LOG=/opt/deck-brain-config/vps-scheduler.log
-# Grouped by the desktop into data/scripts/ — see vault_group in src-tauri/src/config.rs.
-RUNLOG="$HOME/vault/dev/deck-vault/data/scripts/run-log-vps.json"
+# Deck fetches this over SSH (src-tauri/src/vpsjobs.rs).
+RUNLOG="$HOME/deck/run-log-vps.json"
 mkdir -p "$(dirname "$RUNLOG")"
 [ -f "$RUNLOG" ] || echo "[]" > "$RUNLOG"
 

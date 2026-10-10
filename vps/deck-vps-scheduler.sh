@@ -1,13 +1,13 @@
 #!/bin/bash
 # deck-vps-scheduler.sh — the VPS-side half of Deck's Script Runner.
-# Reads the job list Deck mirrors into the synced vault, and fires the jobs whose
+# Reads the job list Deck copies here over SSH, and fires the jobs whose
 # target is "vps" when their schedule is due. Runs once per invocation (a systemd
 # timer calls it every minute). Keeps its own last-run state so it never depends on
 # the desktop being awake — this is the whole point of running jobs on the VPS.
 #
-# Job source (synced from Deck via Syncthing):
-#   ~/vault/dev/deck-vault/data/scripts/script-runner.json
-# State (VPS-only, not synced back to avoid fighting Deck's copy):
+# Job source (pushed by Deck over SSH, src-tauri/src/vpsjobs.rs):
+#   ~/deck/script-runner.json
+# State (server-only, never sent back):
 #   /opt/deck-brain-config/vps-scheduler-state.json   {"<id>": <lastRun epoch ms>}
 # Log:
 #   /opt/deck-brain-config/vps-scheduler.log
@@ -15,8 +15,7 @@
 set -euo pipefail
 export PATH="/usr/local/sbin:/usr/local/bin:/usr/bin:/bin"
 
-# Grouped by feature, matching the desktop — see vault_group in src-tauri/src/config.rs.
-JOBS="$HOME/vault/dev/deck-vault/data/scripts/script-runner.json"
+JOBS="$HOME/deck/script-runner.json"
 STATE="/opt/deck-brain-config/vps-scheduler-state.json"
 LOG="/opt/deck-brain-config/vps-scheduler.log"
 TZ_LOCAL="Asia/Beirut"   # schedules are authored in Hasan's local time
@@ -74,10 +73,9 @@ due=$(JOBS_NOW_MS="$now_ms" TODAY="$today" CUR_HM="$cur_hm" TODAY_DAYS="$today_e
 [ -z "$due" ] && exit 0
 
 # Fire each due job in its own detached subshell that captures exit + output and
-# writes a run record Deck can read (synced via data/run-log-vps.json).
-# Grouped by the desktop into data/scripts/ (src-tauri/src/config.rs). Only created here — the
-# appending is run-one-job.sh's, which is what keeps the flat copy current too.
-RUNLOG="$HOME/vault/dev/deck-vault/data/scripts/run-log-vps.json"
+# writes a run record Deck fetches over SSH (~/deck/run-log-vps.json). Only created here; the
+# appending is run-one-job.sh's.
+RUNLOG="$HOME/deck/run-log-vps.json"
 mkdir -p "$(dirname "$RUNLOG")"
 [ -f "$RUNLOG" ] || echo "[]" > "$RUNLOG"
 while IFS=$'\t' read -r id command argsjson; do

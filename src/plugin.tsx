@@ -23,7 +23,7 @@ import {
   ChevronDown, Plus, Trash2, FolderOpen, Play, Check, CheckCircle2, XCircle, Clock, X,
 } from "lucide-react";
 import { listen } from "../shim/event.js";
-import { configRead, configWrite, pickScript, runScriptNow } from "../shim/bridge.js";
+import { configRead, configWrite, pickScript, runScriptNow, vpsRunsPull } from "../shim/bridge.js";
 import { TextInput, TimeInput, DayPicker, Segmented } from "../shim/ui.js";
 import { mergeRuns, lastRunById as newestPerJob, fmtTime, type ScriptJob, type RunRecord } from "./runs";
 
@@ -105,11 +105,22 @@ export default function ScriptRunner() {
       if (e.payload.includes("script-runner")) load();
       if (e.payload.includes("run-log") || e.payload.includes("run-log-vps")) loadRuns();
     }).then((u) => (un = u));
-    // VPS run records arrive via Syncthing (no local FS event) — poll so they surface.
-    const iv = setInterval(loadRuns, 15_000);
-    return () => { un?.(); clearInterval(iv); };
+    return () => { un?.(); };
     /* eslint-disable-next-line */
   }, []);
+
+  // VPS run records live on the server; fetch them over SSH while this tab is on screen and a job
+  // runs there. A minute apart, since each fetch is an ssh round trip. The write lands only when
+  // the log changed, and the config-changed listener above reloads the list.
+  const hasVps = list.some((j) => j.target === "vps");
+  useEffect(() => {
+    if (!hasVps) return;
+    const pull = () => { if (!document.hidden) vpsRunsPull().catch(() => {}); };
+    pull();
+    const iv = setInterval(pull, 60_000);
+    document.addEventListener("visibilitychange", pull);
+    return () => { clearInterval(iv); document.removeEventListener("visibilitychange", pull); };
+  }, [hasVps]);
 
   useEffect(() => {
     const cur = JSON.stringify(list);
@@ -224,8 +235,8 @@ export default function ScriptRunner() {
                               themselves are in the panel — this points at it. */}
                           {j.target === "vps" && (
                             <p className="mt-1.5 text-[11px] leading-relaxed text-text-muted">
-                              Needs a scheduler installed on that server — it reads this job list
-                              out of the synced vault once a minute.{" "}
+                              Needs a scheduler installed on that server — Deck copies the VPS
+                              jobs there over SSH, and it checks them once a minute.{" "}
                               {/* "settings:<tab>" is App's own way for a control to point at the
                                   settings that govern it, so this lands on the Plugins tab
                                   rather than the top of Settings. */}
@@ -418,7 +429,10 @@ export function Settings() {
           A job set to <b className="font-medium text-text-secondary">VPS</b> runs on a server
           instead of this PC, so it fires whether or not Deck is open. That needs a scheduler
           installed there once. It is not a service — no port, no container, no token — just a
-          systemd timer that reads this job list out of the synced vault every minute.
+          systemd timer that checks the job list every minute. Deck copies the VPS jobs to{" "}
+          <span className="font-mono">~/deck/</span> on the server over SSH (host{" "}
+          <span className="font-mono">vps</span> in your <span className="font-mono">~/.ssh/config</span>)
+          whenever they change.
         </p>
         <pre className="scroll-thin overflow-x-auto rounded p-2 text-[11px] text-text-secondary"
           style={{ background: "var(--bg-card)", fontFamily: "var(--font-mono)" }}>
@@ -432,12 +446,13 @@ ssh vps 'sh ~/deck-scheduler/install.sh'`}
         <p className="mt-2 text-text-muted">
           The line ending in <span className="font-mono">--check</span> is a dry run — it prints
           what it would do and changes nothing, so read that before the last one. Needs{" "}
-          <span className="font-mono">jq</span>, systemd, and the vault syncing to that machine.
+          <span className="font-mono">jq</span> and systemd on the server, and key-based{" "}
+          <span className="font-mono">ssh vps</span> from this PC.
         </p>
         <p className="mt-2 text-text-muted">
-          Results come back the same way they go out: the server appends to{" "}
-          <span className="font-mono">run-log-vps.json</span> in the vault, and the Runs list
-          merges those with the local ones. <span className="font-mono">plugins/script-runner/vps/README.md</span>{" "}
+          Results come back the same way: the server appends to{" "}
+          <span className="font-mono">~/deck/run-log-vps.json</span>, Deck fetches it while this tab
+          is open, and the Runs list merges those with the local ones. <span className="font-mono">plugins/script-runner/vps/README.md</span>{" "}
           has the paths and how to check on it.
         </p>
       </div>

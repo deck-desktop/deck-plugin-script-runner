@@ -4,18 +4,19 @@ A Script Runner job has a **target**: `local` runs it on this PC, `vps` runs it 
 This folder is what makes the second one work.
 
 It is not a service. There is no port, no container, no token and nothing to expose — a systemd
-timer wakes once a minute, reads the job list out of the synced vault, and fires whatever is
-due. Nothing calls in.
+timer wakes once a minute, reads the job list Deck copied to `~/deck/`, and fires whatever is
+due. Nothing calls in: Deck reaches the server over SSH, the server never reaches Deck.
 
 ```
-Deck writes  →  script-runner.json  →  (Syncthing)  →  server reads it every minute
-                                                        ↓
-                                        run-log-vps.json  ←  job runs
-                                                        ↓
-                                                  (Syncthing)
-                                                        ↓
-                                     Script Runner merges it into its log
+Deck saves a VPS job  →  ssh vps  →  ~/deck/script-runner.json  →  server reads it every minute
+                                                                    ↓
+                                                job runs  →  ~/deck/run-log-vps.json
+                                                                    ↓
+Script Runner tab open  →  ssh vps cat  →  merged into the Runs list
 ```
+
+Deck pushes only the jobs whose target is `vps`, and only when they change (src-tauri/src/vpsjobs.rs).
+It uses the host `vps` from `~/.ssh/config` with key auth; a dev build never pushes.
 
 **Why bother:** a `vps` job runs whether or not your desktop is awake. That is the only thing it
 buys, and it is the whole reason the target exists.
@@ -36,7 +37,7 @@ next tick, and the tick does not kill it on the way out.
 
 ## Install
 
-Needs `jq`, systemd, and the vault syncing to this machine.
+Needs `jq` and systemd here, and key-based `ssh vps` from the PC running Deck.
 
 ```sh
 ssh vps 'mkdir -p ~/deck-scheduler'
@@ -51,8 +52,8 @@ ssh vps 'sh ~/deck-scheduler/install.sh'
 Hardcoded in the scripts, so `install.sh` matches them rather than choosing:
 
 ```
-~/vault/dev/deck-vault/data/scripts/script-runner.json   the job list (synced, read-only here)
-~/vault/dev/deck-vault/data/scripts/run-log-vps.json     run records (synced back)
+~/deck/script-runner.json                                the job list (pushed by Deck)
+~/deck/run-log-vps.json                                  run records (fetched by Deck)
 /opt/deck-brain-config/deck-vps-scheduler.sh             the scheduler
 /opt/deck-brain-config/run-one-job.sh                    the runner
 /opt/deck-brain-config/vps-scheduler-state.json          last-run per job — NOT synced
@@ -60,9 +61,9 @@ Hardcoded in the scripts, so `install.sh` matches them rather than choosing:
 ~/.config/systemd/user/deck-scheduler.{timer,service}    the tick
 ```
 
-The state file stays off the vault deliberately: it is this machine's record of what it has
-already fired, and syncing it back would have the desktop and the server overwriting each
-other's idea of when a job last ran.
+The state file never goes back to Deck: it is this machine's record of what it has already
+fired, and sharing it would have the desktop and the server overwriting each other's idea of
+when a job last ran.
 
 ## Checking on it
 

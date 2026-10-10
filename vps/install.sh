@@ -3,8 +3,8 @@
 # rather than starting over, and it never touches the job list or the run log.
 #
 # This is what makes a Script Runner job with target "vps" actually run. There is no service and
-# no port: a systemd timer wakes every minute, reads the job list out of the synced vault, and
-# fires whatever is due. Nothing calls in, so nothing has to be exposed.
+# no port: a systemd timer wakes every minute, reads the job list Deck copies to ~/deck/ over
+# SSH, and fires whatever is due. Nothing calls in, so nothing has to be exposed.
 #
 # Run it ON THE SERVER, after copying this directory there:
 #
@@ -27,7 +27,7 @@ SRC=$(cd "$(dirname "$0")" && pwd)
 # Hardcoded in both scripts, so this is not a choice — changing it means changing them too.
 BRAIN="/opt/deck-brain-config"
 UNITS="$HOME/.config/systemd/user"
-JOBS="$HOME/vault/dev/deck-vault/data/scripts/script-runner.json"
+JOBS="$HOME/deck/script-runner.json"
 
 say()  { printf '%s\n' "  $*"; }
 step() { printf '\n== %s\n' "$*"; }
@@ -42,14 +42,14 @@ if [ -n "$MISSING" ]; then
     say "jq is what decides which jobs are due; install it first."
     exit 1
 fi
-# The job list arrives by whatever syncs the vault — Syncthing in Deck's own setup. Its absence
+# The job list arrives when Deck pushes it, the first time a VPS job is saved. Its absence
 # is not fatal (the scheduler exits quietly until it appears) but it is almost always the reason
 # nothing runs, so it is worth saying now rather than after a week of silence.
 if [ -f "$JOBS" ]; then
     say "job list: $JOBS"
 else
     say "NOTE: no job list at $JOBS yet."
-    say "      It arrives when the vault syncs here. Until then the timer runs and does nothing."
+    say "      Deck copies it here when a VPS job is saved. Until then the timer runs and does nothing."
 fi
 # User units die at logout without lingering, which is the failure where a job is due and
 # silently never runs.
@@ -57,6 +57,19 @@ if [ "$(loginctl show-user "$USER" -p Linger --value 2>/dev/null)" != "yes" ]; t
     say "user lingering is off — scheduled jobs would die at logout."
     run "sudo loginctl enable-linger '$USER'"
 fi
+say "ok"
+
+# The job list and run log used to arrive through the synced vault. Deck now pushes the list to
+# ~/deck/ over SSH; until the first push, carry the vault copies over so nothing stops firing and
+# the run history is kept. Never overwrites what is already in ~/deck/.
+step "Job list (~/deck)"
+OLD="$HOME/vault/dev/deck-vault/data/scripts"
+run "mkdir -p '$HOME/deck'"
+for f in script-runner.json run-log-vps.json; do
+    if [ ! -f "$HOME/deck/$f" ] && [ -f "$OLD/$f" ]; then
+        run "cp '$OLD/$f' '$HOME/deck/$f'"
+    fi
+done
 say "ok"
 
 step "Scripts ($BRAIN)"
@@ -90,8 +103,8 @@ cat <<EOF
  rather than on the desktop — which means it runs whether or
  not the desktop is awake. That is the whole point of it.
 
- Results are written to run-log-vps.json in the vault, and the
- desktop's Script Runner merges them into its own log.
+ Results are written to ~/deck/run-log-vps.json, which the
+ desktop's Script Runner fetches over SSH and merges into its log.
 
  Log:    $BRAIN/vps-scheduler.log
  State:  $BRAIN/vps-scheduler-state.json
