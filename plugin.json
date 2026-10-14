@@ -3,6 +3,7 @@
   "name": "Script Runner",
   "description": "Runs scripts on a schedule, here or on the VPS.",
   "icon": "Terminal",
-  "version": "1.1.0",
+  "color": "#2dd4bf",
+  "version": "1.1.1",
   "minDeck": "0.22.0"
 }
