@@ -194,7 +194,7 @@ export default function ScriptRunner() {
                 <span role="switch" aria-checked={j.enabled} onClick={() => update(i, { enabled: !j.enabled })}
                   className="relative h-5 w-9 shrink-0 cursor-pointer rounded-full transition-colors"
                   style={{ background: j.enabled ? "var(--accent)" : "var(--border-strong)" }}>
-                  <motion.span layout className="absolute top-0.5 h-4 w-4 rounded-full bg-white" style={{ left: j.enabled ? "18px" : "2px" }} />
+                  <motion.span layout className="absolute top-0.5 h-4 w-4 rounded-full bg-[rgb(var(--on-accent-rgb))]" style={{ left: j.enabled ? "18px" : "2px" }} />
                 </span>
                 <button onClick={() => setOpenIdx(open ? null : i)}>
                   <ChevronDown size={16} className="text-text-muted transition-transform" style={{ transform: open ? "rotate(180deg)" : "none" }} />
@@ -237,12 +237,11 @@ export default function ScriptRunner() {
                             <p className="mt-1.5 text-[11px] leading-relaxed text-text-muted">
                               Needs a scheduler installed on that server — Deck copies the VPS
                               jobs there over SSH, and it checks them once a minute.{" "}
-                              {/* "settings:<tab>" is App's own way for a control to point at the
-                                  settings that govern it, so this lands on the Plugins tab
-                                  rather than the top of Settings. */}
+                              {/* "plugin-settings:<id>" is App's way to open one plugin's
+                                  settings, which is where the steps are. */}
                               <button
                                 onClick={() => window.dispatchEvent(
-                                  new CustomEvent("deck-navigate", { detail: "settings:plugins" }))}
+                                  new CustomEvent("deck-navigate", { detail: "plugin-settings:script-runner" }))}
                                 className="underline decoration-dotted underline-offset-2 transition-colors hover:text-text-primary">
                                 Show me the steps
                               </button>
