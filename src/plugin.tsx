@@ -93,7 +93,7 @@ export default function ScriptRunner() {
     configRead("script-runner").then((t) => {
       try { const f = t ? JSON.parse(t) : { jobs: [] }; const arr = Array.isArray(f.jobs) ? f.jobs : [];
         lastSynced.current = JSON.stringify(arr); setList(arr); } catch { /* keep */ }
-    }).catch(() => {});
+    }).catch((e) => console.warn("[script-runner] jobs load failed", e));
 
   useEffect(() => {
     load();
