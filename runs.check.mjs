@@ -17,7 +17,7 @@ await build({
   entryPoints: [join(import.meta.dirname, "src/runs.ts")],
   outfile: out, format: "esm", bundle: false,
 });
-const { mergeRuns, lastRunById, fmtTime } = await import(`file://${out}`);
+const { mergeRuns, lastRunById, runNews, fmtTime } = await import(`file://${out}`);
 rmSync(dir, { recursive: true, force: true });
 
 // ---- mergeRuns: two files, one timeline ------------------------------------------------------
@@ -43,6 +43,20 @@ const byId = lastRunById(mergeRuns([rec("a", 5000), rec("a", 1000)], []));
 assert.equal(byId.a.finished_at, 5000, "the newest record wins, not the last one seen");
 // A record with no id belongs to no job and must not create a phantom entry.
 assert.deepEqual(Object.keys(lastRunById([rec("", 1)])), []);
+
+// ---- runNews: which runs are worth a notification ---------------------------------------------
+const fail = (id, finished_at) => ({ ...rec(id, finished_at), ok: false, exit_code: 1 });
+const reported = new Map();
+// The first read is the baseline: the caller drops it, but it must remember what was there.
+runNews([fail("a", 1000)], reported);
+assert.deepEqual(runNews([fail("a", 1000)], reported).failed, [], "a failure already seen is not news");
+assert.deepEqual(runNews([fail("a", 2000), fail("a", 1000)], reported).failed.map((r) => r.finished_at), [2000],
+  "a newer failure of the same job is");
+assert.deepEqual(runNews([rec("a", 3000), fail("a", 2000)], reported), { failed: [], recovered: ["a"] },
+  "a success after a reported failure takes it down");
+assert.deepEqual(runNews([rec("a", 4000)], reported).recovered, [], "and only once");
+assert.deepEqual(runNews([rec("b", 6000), fail("b", 5000)], new Map()).failed, [],
+  "an older failure behind a newer success is never reported");
 
 // ---- fmtTime: stored 24h, displayed 12h -------------------------------------------------------
 assert.equal(fmtTime("18:00"), "6:00 PM");

@@ -63,6 +63,25 @@ export function lastRunById(runs: RunRecord[]): Record<string, RunRecord> {
   return m;
 }
 
+/**
+ * Which jobs' latest runs are news: a failure not yet reported, or a success after one.
+ *
+ * Only the newest run per job counts, so a job whose last run worked never reports an older
+ * failure, and several failures of one job read as one. `reported` maps a job id to the
+ * `finished_at` of the failure already reported for it, and is updated in place.
+ */
+export function runNews(runs: RunRecord[], reported: Map<string, number>): { failed: RunRecord[]; recovered: string[] } {
+  const failed: RunRecord[] = [], recovered: string[] = [];
+  for (const r of Object.values(lastRunById(runs))) {
+    if (!r.ok) {
+      if (reported.get(r.id) !== r.finished_at) { reported.set(r.id, r.finished_at); failed.push(r); }
+    } else if (reported.delete(r.id)) {
+      recovered.push(r.id);
+    }
+  }
+  return { failed, recovered };
+}
+
 /** Format an "HH:mm" (24h storage) string for display. Deck shows 12h everywhere. */
 export function fmtTime(hhmm: string): string {
   const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm.trim());

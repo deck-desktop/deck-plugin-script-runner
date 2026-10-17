@@ -24,8 +24,8 @@ import {
 } from "lucide-react";
 import { listen } from "../shim/event.js";
 import { configRead, configWrite, pickScript, runScriptNow, vpsRunsPull } from "../shim/bridge.js";
-import { TextInput, TimeInput, DayPicker, Segmented } from "../shim/ui.js";
-import { mergeRuns, lastRunById as newestPerJob, fmtTime, type ScriptJob, type RunRecord } from "./runs";
+import { TextInput, TimeInput, DayPicker, Segmented, notify, dismissNotification } from "../shim/ui.js";
+import { mergeRuns, lastRunById as newestPerJob, runNews, fmtTime, type ScriptJob, type RunRecord } from "./runs";
 
 const relTime = (ms: number): string => {
   if (!ms) return "";
@@ -74,6 +74,46 @@ async function loadRunLog(): Promise<RunRecord[]> {
   };
   const [local, vps] = await Promise.all([parse("run-log"), parse("run-log-vps")]);
   return mergeRuns(local, vps);
+}
+
+/**
+ * A failed run is a notification, whether or not the tab is open.
+ *
+ * At module scope because the tab unmounts when you look away, and Rust appends local runs to
+ * `run-log` regardless. VPS runs arrive only when the tab's pull fetches them, so those are
+ * noticed while the tab is open (or on the first pull after it opens). The first read after the
+ * plugin loads is the baseline: whatever is already in the logs is not news. Memory only, so a
+ * reload or restart takes a fresh baseline rather than writing anything per run.
+ */
+const SOURCE = "Script Runner";
+let reported: Map<string, number> | null = null;
+
+async function checkRuns() {
+  const runs = await loadRunLog();
+  const baseline = !reported;
+  reported ??= new Map();
+  const { failed, recovered } = runNews(runs, reported);
+  if (baseline) return;
+  for (const r of failed) {
+    const when = new Date(r.finished_at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+    const last = r.output?.trim().split("\n").at(-1)?.trim().slice(0, 160);
+    notify({
+      kind: "error", source: SOURCE, key: `run:${r.id}`,
+      title: `${r.name || "(unnamed)"} failed${r.target === "vps" ? " on the VPS" : ""}`,
+      body: [`${when} · exit ${r.exit_code}`, last].filter(Boolean).join("\n"),
+    });
+  }
+  for (const id of recovered) dismissNotification(SOURCE, `run:${id}`);
+}
+
+void checkRuns();
+const unlistenRuns = listen<string[]>("config-changed", (e) => {
+  if (e.payload.includes("run-log") || e.payload.includes("run-log-vps")) void checkRuns();
+}).catch((e) => { console.warn("[script-runner] run-log listener failed", e); return () => {}; });
+
+/** Called by Deck before a reload re-imports this plugin, so the old copy stops listening. */
+export function dispose() {
+  void unlistenRuns.then((f) => f());
 }
 
 export default function ScriptRunner() {
