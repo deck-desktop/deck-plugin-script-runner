@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 import { listen } from "../shim/event.js";
 import { configRead, configWrite, pickScript, runScriptNow, vpsRunsPull } from "../shim/bridge.js";
-import { TextInput, TimeInput, DayPicker, Segmented, notify, dismissNotification } from "../shim/ui.js";
+import { ConfirmDialog, DayPicker, Segmented, Toggle, notify, dismissNotification, type ConfirmState } from "../shim/ui.js";
 import { mergeRuns, lastRunById as newestPerJob, runNews, fmtTime, type ScriptJob, type RunRecord } from "./runs";
 
 const relTime = (ms: number): string => {
@@ -35,6 +35,11 @@ const relTime = (ms: number): string => {
   if (d < 86_400_000) return `${Math.floor(d / 3_600_000)}h ago`;
   return `${Math.floor(d / 86_400_000)}d ago`;
 };
+
+/** A field's caption, the size and weight of Deck's own `Field` label. */
+const label = "mb-1 block text-[12px] font-medium text-text-secondary";
+/** A text field on the elevated surface, lit in the accent while typing in it. */
+const field = "h-8 w-full rounded-lg border border-subtle bg-elev px-2.5 text-[12.5px] text-text-primary outline-none transition-colors placeholder:text-text-muted focus:border-[var(--accent)]";
 
 const newId = () => `sr-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 
@@ -124,6 +129,7 @@ export default function ScriptRunner() {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [runs, setRuns] = useState<RunRecord[]>([]);
   const [sheet, setSheet] = useState<RunRecord | null>(null); // open side sheet for one run
+  const [confirm, setConfirm] = useState<ConfirmState | null>(null);
 
   // Latest run record per job id (runs are already newest-first from the merge).
   const lastRunById = useMemo(() => newestPerJob(runs), [runs]);
@@ -176,6 +182,19 @@ export default function ScriptRunner() {
   const update = (i: number, patch: Partial<ScriptJob>) =>
     setList((l) => l.map((j, idx) => (idx === i ? { ...j, ...patch } : j)));
   const remove = (i: number) => { setList((l) => l.filter((_, idx) => idx !== i)); setOpenIdx(null); };
+  // A VPS job leaves the server too: the saved list changes, and the installed Deck pushes the
+  // VPS subset of it there (vpsjobs::push_if_changed). Run records are a separate log either way.
+  const askRemove = (i: number) => {
+    const j = list[i];
+    setConfirm({
+      title: `Remove the script ${j.name || "(unnamed)"}?`,
+      body: j.target === "vps"
+        ? "Its schedule goes from this list and from the server's copy, so the VPS stops running it; its past runs stay in the run log."
+        : "Its schedule goes from this list, so it stops running; its past runs stay in the run log.",
+      confirmLabel: "Remove",
+      onConfirm: () => remove(i),
+    });
+  };
   const add = () => { setList((l) => [...l, { ...EMPTY, id: newId() }]); setOpenIdx(list.length); };
   // `pickScript` rather than the bridge's generic `pickFile`: that one takes a single
   // extension, and this dialog offers .ps1/.bat/.cmd/.exe together plus an "All files" fallback.
@@ -185,10 +204,10 @@ export default function ScriptRunner() {
 
   return (
     <div className="relative mx-auto flex h-full w-full max-w-3xl flex-col overflow-hidden">
-      <div className="mb-5 flex shrink-0 items-end justify-between">
+      <div className="mb-4 flex shrink-0 items-end justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-text-primary">Script Runner</h1>
-          <p className="mt-1 text-sm text-text-muted">
+          <h1 className="text-[20px] font-semibold text-text-primary">Script Runner</h1>
+          <p className="mt-0.5 text-[12.5px] text-text-muted">
             {list.length === 0 ? "Run scripts or commands on a schedule."
               : `${enabledCount} of ${list.length} enabled`}
           </p>
@@ -196,7 +215,7 @@ export default function ScriptRunner() {
         <AnimatePresence>
           {savedFlash && (
             <motion.span initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-              className="flex items-center gap-1 text-xs" style={{ color: "var(--accent)" }}>
+              className="flex items-center gap-1 text-[11.5px]" style={{ color: "var(--accent)" }}>
               <Check size={13} /> Saved
             </motion.span>
           )}
@@ -204,63 +223,64 @@ export default function ScriptRunner() {
       </div>
 
       <div className="scroll-thin min-h-0 flex-1 overflow-y-auto">
-       <div className="divide-y divide-subtle overflow-hidden rounded-xl border border-subtle" style={{ background: "var(--bg-card-glass)" }}>
+        {list.length === 0 && (
+          <div className="flex items-start gap-2.5 rounded-lg border border-subtle bg-elev px-3 py-3 text-[12px] leading-relaxed text-text-muted">
+            <Clock size={16} className="mt-0.5 shrink-0" />
+            <div className="flex flex-col items-start gap-2.5">
+              <span>No scripts yet. Add one to run a script or a command every few minutes, or at a time on the days you pick.</span>
+              <button onClick={add}
+                className="flex h-8 items-center gap-1.5 rounded-lg px-3 text-[12.5px] font-medium text-white transition hover:brightness-110"
+                style={{ background: "var(--accent)" }}>
+                <Plus size={14} /> New script
+              </button>
+            </div>
+          </div>
+        )}
+        <div className="flex flex-col gap-0.5">
         {list.map((j, i) => {
           const open = openIdx === i;
           return (
-            <motion.div key={j.id} layout className="overflow-hidden transition-colors"
-              style={{ background: open ? "color-mix(in srgb, var(--accent) 5%, var(--bg-card))" : "transparent" }}>
-              <div className="flex items-center gap-3 px-4 py-2.5">
-                <button onClick={() => setOpenIdx(open ? null : i)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
-                  <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: j.enabled ? "var(--accent)" : "var(--border-strong)" }} />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5">
-                      <span className="truncate text-sm font-medium text-text-primary">{j.name || "(unnamed)"}</span>
-                      {j.target === "vps" && (
-                        <span className="shrink-0 rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide"
-                          style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>VPS</span>
-                      )}
-                    </div>
-                    <div className="truncate text-[11px] text-text-muted">{summary(j)} · {j.command || "no command"}</div>
-                  </div>
+            <motion.div key={j.id} layout className="overflow-hidden">
+              <div className={"group flex h-7 items-center gap-2 rounded-md pl-2 pr-1 transition-colors " + (open ? "bg-white/5" : "hover:bg-white/5")}>
+                <button onClick={() => setOpenIdx(open ? null : i)} className="flex min-w-0 flex-1 items-center gap-2 text-left">
+                  <ChevronDown size={13} className="shrink-0 text-text-muted transition-transform" style={{ transform: open ? "none" : "rotate(-90deg)" }} />
+                  <span className="shrink-0 truncate text-[12.5px] text-text-primary">{j.name || "(unnamed)"}</span>
+                  {j.target === "vps" && (
+                    <span className="shrink-0 rounded-full px-1.5 py-px text-[10.5px] text-text-secondary"
+                      style={{ background: "var(--bg-elev)" }}>VPS</span>
+                  )}
+                  <span className="min-w-0 flex-1 truncate text-[11px] text-text-muted">{summary(j)} · {j.command || "no command"}</span>
                 </button>
-                <StatusIcon rec={lastRunById[j.id]} onClick={() => lastRunById[j.id] && setSheet(lastRunById[j.id])} />
                 {j.target !== "vps" && (
                   <button onClick={() => { void runScriptNow(j.command, j.args, j.id, j.name); setTimeout(loadRuns, 1500); }} title="Run now"
-                    className="rounded-md p-1.5 text-text-muted transition hover:bg-elev hover:text-accent">
-                    <Play size={15} />
+                    className="grid size-5 shrink-0 place-items-center rounded text-text-muted opacity-0 transition-colors hover:bg-white/10 hover:text-text-primary group-hover:opacity-100">
+                    <Play size={13} />
                   </button>
                 )}
-                <span role="switch" aria-checked={j.enabled} onClick={() => update(i, { enabled: !j.enabled })}
-                  className="relative h-5 w-9 shrink-0 cursor-pointer rounded-full transition-colors"
-                  style={{ background: j.enabled ? "var(--accent)" : "var(--border-strong)" }}>
-                  <motion.span layout className="absolute top-0.5 h-4 w-4 rounded-full bg-[rgb(var(--on-accent-rgb))]" style={{ left: j.enabled ? "18px" : "2px" }} />
-                </span>
-                <button onClick={() => setOpenIdx(open ? null : i)}>
-                  <ChevronDown size={16} className="text-text-muted transition-transform" style={{ transform: open ? "rotate(180deg)" : "none" }} />
-                </button>
+                <StatusIcon rec={lastRunById[j.id]} onClick={() => lastRunById[j.id] && setSheet(lastRunById[j.id])} />
+                <Toggle on={j.enabled} onChange={(v) => update(i, { enabled: v })} />
               </div>
 
               <AnimatePresence initial={false}>
                 {open && (
                   <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }}
                     transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}>
-                    <div className="border-t border-subtle py-4 pl-[38px] pr-4">
+                    <div className="pb-4 pl-8 pr-2 pt-2.5">
                       <div className="grid grid-cols-2 gap-x-4 gap-y-3.5">
                         <label className="block">
-                          <span className="mb-1 block text-[11px] font-medium text-text-secondary">Name</span>
-                          <TextInput value={j.name} onChange={(e) => update(i, { name: e.target.value })} placeholder="Display name" />
+                          <span className={label}>Name</span>
+                          <input value={j.name} onChange={(e) => update(i, { name: e.target.value })} placeholder="Display name" className={field} />
                         </label>
                         <label className="block">
-                          <span className="mb-1 block text-[11px] font-medium text-text-secondary">Arguments <span className="text-text-muted">· optional</span></span>
+                          <span className={label}>Arguments <span className="font-normal text-text-muted">· optional</span></span>
                           <input value={j.args.join(" ")}
                             onChange={(e) => update(i, { args: e.target.value.split(" ").filter(Boolean) })}
                             placeholder="Space-separated"
-                            className="h-9 w-full rounded-md border border-strong bg-elev px-3 text-sm text-text-primary placeholder:text-text-muted outline-none transition focus:border-accent" />
+                            className={field} />
                         </label>
 
                         <div className="col-span-2">
-                          <span className="mb-1 block text-[11px] font-medium text-text-secondary">Runs on</span>
+                          <span className={label}>Runs on</span>
                           <div className="flex items-center gap-3">
                             <Segmented layoutId={`seg-target-${j.id}`}
                               value={j.target ?? "local"} onChange={(t) => update(i, { target: t as "local" | "vps" })}
@@ -290,21 +310,22 @@ export default function ScriptRunner() {
                         </div>
 
                         <label className="col-span-2 block">
-                          <span className="mb-1 block text-[11px] font-medium text-text-secondary">Command</span>
+                          <span className={label}>Command</span>
                           <div className="flex gap-2">
-                            <TextInput value={j.command} onChange={(e) => update(i, { command: e.target.value })}
-                              placeholder={j.target === "vps" ? "VPS command or script path (runs in bash)" : "Path to .ps1/.bat/.exe or an inline command"} />
+                            <input value={j.command} onChange={(e) => update(i, { command: e.target.value })}
+                              placeholder={j.target === "vps" ? "VPS command or script path (runs in bash)" : "Path to .ps1/.bat/.exe or an inline command"}
+                              className={field} />
                             {j.target !== "vps" && (
                               <button onClick={() => browse(i)} title="Browse for a script"
-                                className="grid h-9 w-10 shrink-0 place-items-center rounded-md border border-strong bg-elev text-text-secondary transition hover:text-text-primary">
-                                <FolderOpen size={16} />
+                                className="grid size-8 shrink-0 place-items-center rounded-lg border border-subtle bg-elev text-text-secondary transition-colors hover:border-strong hover:text-text-primary">
+                                <FolderOpen size={14} />
                               </button>
                             )}
                           </div>
                         </label>
 
                         <div className="col-span-2">
-                          <span className="mb-1 block text-[11px] font-medium text-text-secondary">Schedule</span>
+                          <span className={label}>Schedule</span>
                           <div className="flex items-center gap-3">
                             <Segmented layoutId={`seg-mode-${j.id}`}
                               value={j.mode} onChange={(m) => update(i, { mode: m as ScriptJob["mode"] })}
@@ -313,11 +334,14 @@ export default function ScriptRunner() {
                               <div className="relative w-32">
                                 <input value={String(j.intervalMin)} inputMode="numeric"
                                   onChange={(e) => update(i, { intervalMin: Number(e.target.value) || 0 })}
-                                  className="h-9 w-full rounded-md border border-strong bg-elev pl-3 pr-12 text-sm text-text-primary outline-none transition focus:border-accent" />
-                                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-text-muted">min</span>
+                                  className={field + " pr-10"} />
+                                <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] text-text-muted">min</span>
                               </div>
                             ) : (
-                              <TimeInput value={j.timeOfDay} onChange={(v) => update(i, { timeOfDay: v })} className="w-32" />
+                              // TimeInput's native picker, at the height of the fields around it.
+                              <input type="time" value={j.timeOfDay} onChange={(e) => update(i, { timeOfDay: e.target.value })}
+                                onClick={(e) => { try { (e.currentTarget as any).showPicker?.(); } catch { /* not supported */ } }}
+                                className={"time-input w-32 cursor-pointer leading-none " + field} />
                             )}
                           </div>
                         </div>
@@ -325,11 +349,11 @@ export default function ScriptRunner() {
                         {j.mode === "atTime" && (
                           <>
                             <div className="col-span-2">
-                              <span className="mb-1.5 block text-[11px] font-medium text-text-secondary">On days</span>
+                              <span className={label}>On days</span>
                               <DayPicker value={j.days} onChange={(d) => update(i, { days: d })} />
                             </div>
                             <label className="block">
-                              <span className="mb-1 block text-[11px] font-medium text-text-secondary">Repeat every</span>
+                              <span className={label}>Repeat every</span>
                               <div className="relative">
                                 <input
                                   value={String(j.everyWeeks ?? 1)} inputMode="numeric"
@@ -337,16 +361,16 @@ export default function ScriptRunner() {
                                     const n = Math.max(1, Number(e.target.value) || 1);
                                     update(i, { everyWeeks: n, startDate: n > 1 && !j.startDate ? todayISO() : j.startDate });
                                   }}
-                                  className="h-9 w-full rounded-md border border-strong bg-elev pl-3 pr-14 text-sm text-text-primary outline-none transition focus:border-accent" />
-                                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-text-muted">week{(j.everyWeeks ?? 1) > 1 ? "s" : ""}</span>
+                                  className={field + " pr-14"} />
+                                <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] text-text-muted">week{(j.everyWeeks ?? 1) > 1 ? "s" : ""}</span>
                               </div>
                             </label>
                             {(j.everyWeeks ?? 1) > 1 && (
                               <label className="block">
-                                <span className="mb-1 block text-[11px] font-medium text-text-secondary">Starting</span>
+                                <span className={label}>Starting</span>
                                 <input type="date" value={j.startDate || todayISO()}
                                   onChange={(e) => update(i, { startDate: e.target.value })}
-                                  className="time-input h-9 w-full rounded-md border border-strong bg-elev px-3 text-sm text-text-primary outline-none transition focus:border-accent" />
+                                  className={"time-input " + field} />
                               </label>
                             )}
                           </>
@@ -354,9 +378,9 @@ export default function ScriptRunner() {
                       </div>
 
                       <div className="mt-4 flex justify-end">
-                        <button onClick={() => remove(i)}
-                          className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs text-text-muted transition hover:bg-elev hover:text-danger">
-                          <Trash2 size={14} /> Remove script
+                        <button onClick={() => askRemove(i)}
+                          className="flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-[12px] text-text-muted transition-colors hover:bg-white/5 hover:text-red-400">
+                          <Trash2 size={13} /> Remove script
                         </button>
                       </div>
                     </div>
@@ -366,29 +390,35 @@ export default function ScriptRunner() {
             </motion.div>
           );
         })}
-       </div>
+        </div>
 
-        <button onClick={add}
-          className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-subtle py-2.5 text-sm text-text-muted transition hover:border-accent hover:text-text-primary">
-          <Plus size={16} /> New script
-        </button>
+        {list.length > 0 && (
+          <button onClick={add}
+            className="mt-2 flex h-8 items-center gap-1.5 rounded-lg border border-subtle bg-elev px-3 text-[12.5px] text-text-secondary transition-colors hover:border-strong hover:text-text-primary">
+            <Plus size={14} /> New script
+          </button>
+        )}
       </div>
 
       <RunSheet rec={sheet} onClose={() => setSheet(null)} />
+      <ConfirmDialog state={confirm} onClose={() => setConfirm(null)} />
     </div>
   );
 }
 
-// Row status: last-run outcome as a small icon. No record yet → muted dot.
+const OK = "rgb(var(--tone-green-400))";
+const FAILED = "rgb(var(--tone-red-400))";
+
+// Row status: last-run outcome as a small icon. No record yet → an empty slot, so rows line up.
 function StatusIcon({ rec, onClick }: { rec?: RunRecord; onClick: () => void }) {
-  if (!rec) return <span className="w-6" title="Never run" />;
+  if (!rec) return <span className="w-6 shrink-0" title="Never run" />;
   const { color, Icon, label } = rec.ok
-    ? { color: "var(--accent)", Icon: CheckCircle2, label: "Succeeded" }
-    : { color: "var(--danger)", Icon: XCircle, label: "Failed" };
+    ? { color: OK, Icon: CheckCircle2, label: "Succeeded" }
+    : { color: FAILED, Icon: XCircle, label: "Failed" };
   return (
     <button onClick={onClick} title={`${label} · ${relTime(rec.finished_at)} — click for details`}
-      className="flex items-center gap-1 rounded-md px-1.5 py-1 transition hover:bg-elev">
-      <Icon size={15} style={{ color }} />
+      className="grid size-6 shrink-0 place-items-center rounded-md transition-colors hover:bg-white/10">
+      <Icon size={14} style={{ color }} />
     </button>
   );
 }
@@ -400,38 +430,46 @@ function RunSheet({ rec, onClose }: { rec: RunRecord | null; onClose: () => void
     const d = new Date(ms);
     return `${d.toLocaleDateString()} ${fmtTime(`${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`)}`;
   };
+  const tone = rec?.ok ? OK : FAILED;
   return (
     <AnimatePresence>
       {rec && (
         <>
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             onClick={onClose} className="absolute inset-0 z-40 bg-black/40" />
+          {/* Inside the tab rather than over the window: it is about this tab's jobs. */}
           <motion.div initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }}
             transition={{ type: "spring", stiffness: 400, damping: 38 }}
-            className="absolute right-0 top-0 z-50 flex h-full w-[440px] max-w-[85%] flex-col border-l border-subtle bg-panel">
-            <div className="flex items-center justify-between border-b border-subtle px-5 py-4">
-              <div className="flex items-center gap-2">
-                {rec.ok ? <CheckCircle2 size={18} style={{ color: "var(--accent)" }} />
-                        : <XCircle size={18} style={{ color: "var(--danger)" }} />}
-                <span className="font-semibold text-text-primary">{rec.name || "(unnamed)"}</span>
+            className="absolute right-0 top-0 z-50 flex h-full w-[440px] max-w-[85%] flex-col border-l border-subtle bg-card shadow-2xl">
+            <div className="flex items-center justify-between gap-2 px-5 pb-2 pt-3">
+              <div className="flex min-w-0 items-center gap-2">
+                {rec.ok ? <CheckCircle2 size={15} className="shrink-0" style={{ color: OK }} />
+                        : <XCircle size={15} className="shrink-0" style={{ color: FAILED }} />}
+                <span className="truncate text-[13px] font-semibold text-text-primary">{rec.name || "(unnamed)"}</span>
                 {rec.target === "vps" && (
-                  <span className="rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide"
-                    style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>VPS</span>
+                  <span className="shrink-0 rounded-full px-1.5 py-px text-[10.5px] text-text-secondary"
+                    style={{ background: "var(--bg-elev)" }}>VPS</span>
                 )}
               </div>
-              <button onClick={onClose} className="rounded-md p-1 text-text-muted hover:bg-elev hover:text-text-primary"><X size={18} /></button>
+              <button onClick={onClose} title="Close"
+                className="grid size-7 shrink-0 place-items-center rounded-lg text-text-muted transition-colors hover:bg-white/5 hover:text-text-primary"><X size={15} /></button>
             </div>
-            <div className="space-y-3 px-5 py-4 text-sm">
-              <Detail label="Result" value={rec.ok ? "Succeeded" : `Failed (exit ${rec.exit_code})`}
-                color={rec.ok ? "var(--accent)" : "var(--danger)"} />
+            <div className="space-y-2 px-5 py-2 text-[12.5px]">
+              <div className="flex items-baseline justify-between gap-4">
+                <span className="text-[12px] text-text-muted">Result</span>
+                <span className="rounded-full px-1.5 py-px text-[10.5px]"
+                  style={{ color: tone, background: `color-mix(in srgb, ${tone} 14%, transparent)` }}>
+                  {rec.ok ? "Succeeded" : `Failed (exit ${rec.exit_code})`}
+                </span>
+              </div>
               <Detail label="Ran" value={`${fmtAbs(rec.finished_at)} · ${relTime(rec.finished_at)}`} />
               <Detail label="Duration" value={rec.finished_at && rec.started_at
                 ? `${((rec.finished_at - rec.started_at) / 1000).toFixed(1)}s` : "—"} />
             </div>
-            <div className="flex items-center gap-1.5 px-5 pb-2 text-[11px] font-semibold uppercase tracking-wide text-text-muted">
-              <Clock size={12} /> Output
+            <div className="flex items-center gap-1.5 px-5 pb-1.5 pt-3 text-[12px] font-medium text-text-secondary">
+              <Clock size={12} className="text-text-muted" /> Output
             </div>
-            <pre className="scroll-thin mx-5 mb-5 min-h-0 flex-1 overflow-auto rounded-lg border border-subtle bg-app p-3 text-[11px] leading-relaxed text-text-secondary whitespace-pre-wrap">
+            <pre className="scroll-thin mx-5 mb-4 min-h-0 flex-1 overflow-auto whitespace-pre-wrap rounded-lg border border-subtle bg-app p-3 font-mono text-[11px] leading-relaxed text-text-secondary">
               {rec.output?.trim() || "(no output captured)"}
             </pre>
           </motion.div>
@@ -441,11 +479,11 @@ function RunSheet({ rec, onClose }: { rec: RunRecord | null; onClose: () => void
   );
 }
 
-function Detail({ label, value, color }: { label: string; value: string; color?: string }) {
+function Detail({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-baseline justify-between gap-4">
-      <span className="text-[11px] uppercase tracking-wide text-text-muted">{label}</span>
-      <span className="text-right font-medium" style={{ color: color ?? "var(--text-primary)" }}>{value}</span>
+      <span className="text-[12px] text-text-muted">{label}</span>
+      <span className="text-right text-text-primary">{value}</span>
     </div>
   );
 }
