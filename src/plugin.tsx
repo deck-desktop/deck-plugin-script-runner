@@ -513,7 +513,8 @@ export function Settings() {
         </p>
         <pre className="scroll-thin overflow-x-auto rounded p-2 text-[11px] text-text-secondary"
           style={{ background: "var(--bg-card)", fontFamily: "var(--font-mono)" }}>
-{`cd <your Deck checkout>/plugins/script-runner/vps
+{`git clone https://github.com/deck-desktop/deck-plugin-script-runner
+cd deck-plugin-script-runner/vps
 ssh vps 'mkdir -p ~/deck-scheduler'
 scp deck-vps-scheduler.sh run-one-job.sh deck-scheduler.timer \
   deck-scheduler.service install.sh vps:~/deck-scheduler/
@@ -529,8 +530,8 @@ ssh vps 'sh ~/deck-scheduler/install.sh'`}
         <p className="mt-2 text-text-muted">
           Results come back the same way: the server appends to{" "}
           <span className="font-mono">~/deck/run-log-vps.json</span>, Deck fetches it while this tab
-          is open, and the Runs list merges those with the local ones. <span className="font-mono">plugins/script-runner/vps/README.md</span>{" "}
-          has the paths and how to check on it.
+          is open, and the Runs list merges those with the local ones. The plugin's repository has
+          the paths and how to check on it, in <span className="font-mono">vps/README.md</span>.
         </p>
       </div>
     </div>
