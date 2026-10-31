@@ -19,10 +19,10 @@ export function register(server: McpServer, deck: DeckMcp) {
     "deck_add_script",
     "Schedule a script or command to run on a repeating schedule — either every N " +
       "minutes (interval) or at a time on chosen days (atTime). Command can be a path " +
-      "to a .ps1/.bat/.exe or an inline command.",
+      "to a script (.ps1/.bat/.exe on Windows, .sh or a program on Linux) or an inline command.",
     {
       name: z.string(),
-      command: z.string().describe("path to .ps1/.bat/.exe, or an inline command"),
+      command: z.string().describe("path to a script (.ps1/.bat/.exe on Windows, .sh or a program on Linux), or an inline command"),
       args: z.array(z.string()).default([]),
       intervalMinutes: z.number().int().positive().optional(),
       atTime: z.string().regex(/^([01]?\d|2[0-3]):[0-5]\d$/).optional(),

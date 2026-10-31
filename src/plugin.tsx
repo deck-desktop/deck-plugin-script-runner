@@ -23,7 +23,7 @@ import {
   ChevronDown, Plus, Trash2, FolderOpen, Play, Check, CheckCircle2, XCircle, Clock, X,
 } from "lucide-react";
 import { listen } from "../shim/event.js";
-import { configRead, configWrite, pickScript, runScriptNow, vpsRunsPull } from "../shim/bridge.js";
+import { configRead, configWrite, pickScript, runScriptNow, vpsRunsPull, isWindows } from "../shim/bridge.js";
 import { ConfirmDialog, DayPicker, Segmented, Toggle, notify, dismissNotification, type ConfirmState } from "../shim/ui.js";
 import { mergeRuns, lastRunById as newestPerJob, runNews, fmtTime, type ScriptJob, type RunRecord } from "./runs";
 
@@ -313,7 +313,7 @@ export default function ScriptRunner() {
                           <span className={label}>Command</span>
                           <div className="flex gap-2">
                             <input value={j.command} onChange={(e) => update(i, { command: e.target.value })}
-                              placeholder={j.target === "vps" ? "VPS command or script path (runs in bash)" : "Path to .ps1/.bat/.exe or an inline command"}
+                              placeholder={j.target === "vps" ? "VPS command or script path (runs in bash)" : isWindows() ? "Path to .ps1/.bat/.exe or an inline command" : "Path to a .sh or a program, or an inline command"}
                               className={field} />
                             {j.target !== "vps" && (
                               <button onClick={() => browse(i)} title="Browse for a script"
