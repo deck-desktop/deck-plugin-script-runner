@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.0 (2026-11-01)
+
+- Runs on Linux, where a job runs a script or a program rather than an .exe. Needs Deck 1.15.0.
+
 ## 1.2.1 (2026-10-30)
 
 - A licence, this changelog, a README rewritten with a screenshot, and the permissions it uses
